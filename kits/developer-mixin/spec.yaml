@@ -1,0 +1,22 @@
+schemaVersion: "2"
+kind: mixin
+name: acme-developer-mixin
+displayName: Developer (implementer) mixin
+description: Layered on the built-in claude agent so proxy-managed OAuth still applies; implements specs and opens PRs
+
+agentInstructions:
+  content: |
+    You are the implementer on this team. Work only from files under specs/.
+    Branch from main as feat/<spec-id>. Commit with a conventional message.
+    Push and open a PR with `gh pr create` whose body links the spec.
+    Be fast and minimal. Do not add tests; the reviewer owns test coverage.
+    Stop after the PR URL is printed.
+
+permissions:
+  network:
+    allow:
+      - github.com
+      - api.github.com
+      - api.anthropic.com
+      - pypi.org
+      - files.pythonhosted.org

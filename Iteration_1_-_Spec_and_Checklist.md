@@ -269,20 +269,20 @@ No Slack. No coordinator. No Hermes. No GitHub App. No cloud sandboxes (`--cloud
 
 ### Environment
 
-- [ ] `sbx version` — record it. Need ≥ 0.42 (mountless create). Note `-e/--env` needs ≥ 0.39, `--deny-network` ≥ 0.38.  
+- [x] `sbx version` — record it. Need ≥ 0.42 (mountless create). Note `-e/--env` needs ≥ 0.39, `--deny-network` ≥ 0.38.  
       - Verify: version printed and recorded at the top of the runbook notes.  
-- [ ] `sbx login` — signed in as Jeremy.  
+- [x] `sbx login` — signed in as Jeremy.  
       - Verify: `sbx ls` succeeds.  
-- [ ] `sbx policy ls` — check whether the output says `Governance: Managed by <org>`.  
+- [x] `sbx policy ls` — check whether the output says `Governance: Managed by <org>`.  
       - If **not governed**: `sbx policy init deny-all`. Verify: `sbx policy check network pypi.org` → Denied.  
       - If **governed**: do not run `init`. Kit allow rules are inactive; the developer's reach is whatever the org allows. The reviewer lockdown still works via kit deny rules. Confirm `sbx policy check network --sandbox reviewer pypi.org` → Denied once the reviewer exists. Note that org policy edits take up to 5 minutes to land.  
 - [ ] `echo "$ANTHROPIC_API_KEY" | sbx secret set anthropic`  
       - Verify: `sbx secret ls` shows `(global) service anthropic`.  
-- [ ] Check for audit logs: `ls ~/Library/Logs/com.docker.sandboxes/sandboxes/auditkit/`. Record whether `.jsonl` files exist. If none, the audit surface for the demo is `sbx policy log`.
+- [x] Check for audit logs: `ls ~/Library/Logs/com.docker.sandboxes/sandboxes/auditkit/`. Record whether `.jsonl` files exist. If none, the audit surface for the demo is `sbx policy log`.
 
 ### GitHub
 
-- [ ] Create repo `<owner>/sbx-demo-app` with the contents in 4.1. Push `main`. Tests pass locally.  
+- [x] Create repo `<owner>/sbx-demo-app` with the contents in 4.1. Push `main`. Tests pass locally.  
       - Verify: `pytest -q` green on the host.  
 - [ ] Branch protection on `main`: require 1 approving review.  
 - [ ] Create machine user `acme-reviewer-bot`; add as collaborator with **Read** (Triage is not needed; comments only need PR write via the token). Accept the invite.  

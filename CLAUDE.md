@@ -21,7 +21,9 @@ The audience should see Docker machinery (kit files, policy checks, the DENY log
 
 ## Layout
 
-- `kits/developer/` and `kits/reviewer/`: v2 sandbox kits (`spec.yaml` with `extends: claude`, plus `files/home/...` placed at `/home/agent/`).
+- `kits/developer-mixin/` and `kits/reviewer-mixin/`: the **primary** kits. v2 `kind: mixin`, layered onto the built-in `claude` agent with `sbx run ... --kit <dir> claude` so Claude Code keeps using the user's OAuth login (proxy-managed OAuth is unsupported for kits that replace the agent). No `anthropic` secret is needed.
+- `kits/developer/` and `kits/reviewer/`: the API-key **fallback**, v2 `kind: sandbox` with `extends: claude`. Same `files/home/` trees and the same instructions and network rules as the mixins. `sbx kit validate` rejects `sandbox.entrypoint` and ignores `agentInstructions.filename` on a mixin, so only the fallback kits carry those two fields. Keep the pairs in sync when editing either.
+- All four kits place `files/home/...` at `/home/agent/`.
   - Reviewer files: `reviewer-loop.sh`, `review-prompt.md`, and `.claude/skills/code-review/SKILL.md`.
   - Developer files: `.claude/skills/implementer/SKILL.md`.
 - `sbx-demo-app/`: the contents of the **separate** GitHub repo `<owner>/sbx-demo-app` (small Python service plus pytest, with `specs/001-discount-codes.md`). It is staged here only for authoring. It must be published as its own repo and cloned to `~/src/sbx-demo-app`, which is what gets bind-mounted into the developer sandbox. It has its own `CLAUDE.md` meant for that repo.
@@ -29,7 +31,7 @@ The audience should see Docker machinery (kit files, policy checks, the DENY log
 
 ## Architecture points that span files
 
-- The reviewer's entrypoint is `reviewer-loop.sh` (set via `sandbox.entrypoint` in `spec.yaml`). It clones each PR to `/home/agent/workspace/pr-N`, runs `claude -p` against `review-prompt.md` (with `{{PR}}`/`{{OUT}}` substituted), then **the script, not the agent**, appends the traceability footer and posts via `gh pr comment --body-file`.
+- The reviewer runs `reviewer-loop.sh` inside its sandbox. With the mixin kit it is started by `sbx exec reviewer bash /home/agent/reviewer-loop.sh` after `sbx create`; with the fallback kit it is the `sandbox.entrypoint`. Either way it clones each PR to `/home/agent/workspace/pr-N`, runs `claude -p` against `review-prompt.md` (with `{{PR}}`/`{{OUT}}` substituted), then **the script, not the agent**, appends the traceability footer and posts via `gh pr comment --body-file`.
   - State is kept in `/home/agent/state/handled.txt`, and a PR is recorded only after its comment succeeds.
   - Use `set -u`, not `set -e`, so one failed review doesn't kill the loop.
   - The footer text is specified exactly in spec section 4.5; keep its last line ("cannot push, approve, or merge").
@@ -39,18 +41,36 @@ The audience should see Docker machinery (kit files, policy checks, the DENY log
   - Branch protection on `main` requires one approving review.
 - Credentials: the sandbox only ever sees a sentinel, and the host proxy injects the real header.
   - **Never set a global `github` secret.** Use sandbox-scoped ones (`--sandbox developer`, `--sandbox reviewer`), because a global one would silently hand the reviewer the user's full token if the scoped one failed to apply. Verify with `sbx secret ls`.
-  - Claude Code auth is `ANTHROPIC_API_KEY` via `sbx secret set anthropic`. Proxy-managed OAuth is not supported for third-party kits.
+  - Claude Code auth is the user's OAuth login, carried through by the sbx proxy because the mixin kits leave the built-in `claude` agent in place. Only the fallback `extends: claude` kits need `ANTHROPIC_API_KEY` via `sbx secret set anthropic`. Both agents share one subscription allowance, so watch for session limits during a long reviewer poll.
   - Third-party kits need bindings in `~/.config/sbx/credentials.yaml`. Without one, a non-interactive run starts with the credential withheld and only prints a warning.
 - `extends: claude` inheriting the built-in `anthropic`/`github` credential declarations is inferred, not confirmed. If the reviewer gets no GitHub token, add an explicit `credentials:` block to both kits.
+
+## Offline verification (no `sbx` needed)
+
+There is no build or lint tooling. These are the only checks that run without the `sbx` CLI, so they're what to run after editing anything under `kits/` or `sbx-demo-app/`:
+
+```bash
+bash -n kits/reviewer/files/home/reviewer-loop.sh   # syntax-check the entrypoint
+for k in kits/*/spec.yaml; do python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$k" && echo "$k ok"; done   # pyyaml may need the same pip --target trick
+
+cd sbx-demo-app
+pip install --break-system-packages --target .deps -r requirements.txt   # if pytest/pydantic aren't already available
+PYTHONPATH=.deps pytest -q
+```
+
+To exercise `reviewer-loop.sh` itself, put stub `gh` and `claude` scripts first on `PATH` and set `REVIEWER_HOME`, `REPO`, and `POLL_SECONDS` before running it; it reads GitHub PR state through `gh` and runs reviews through `claude -p`, so stubbing both lets you drive it through a full poll/review/comment cycle without either real dependency.
 
 ## Commands
 
 Every `sbx` invocation must match spec section 9. Do not invent flags, and trust `sbx ... --help` over the spec if they disagree (then record the difference). If a documented command behaves differently, stop, show the actual output, and propose the smallest workaround.
 
 ```bash
-sbx kit validate ./kits/developer            # also ./kits/reviewer; all `sbx kit` commands are experimental
-sbx run --name reviewer --skills=off -e REPO=<owner>/sbx-demo-app -e POLL_SECONDS=30 ./kits/reviewer
-sbx run --name developer --skills=off ./kits/developer ~/src/sbx-demo-app -- "Implement specs/001-discount-codes.md using the implementer skill."
+sbx kit validate ./kits/developer-mixin      # also ./kits/reviewer-mixin and the two fallback kits; all `sbx kit` commands are experimental
+sbx create --name reviewer --skills=off --kit ./kits/reviewer-mixin claude   # mountless
+sbx exec -e REPO=<owner>/sbx-demo-app -e POLL_SECONDS=30 reviewer bash /home/agent/reviewer-loop.sh
+sbx run --name developer --skills=off --kit ./kits/developer-mixin claude ~/src/sbx-demo-app -- "Implement specs/001-discount-codes.md using the implementer skill."
+# API-key fallback: sbx run --name reviewer --skills=off -e REPO=... -e POLL_SECONDS=30 ./kits/reviewer
+#                   sbx run --name developer --skills=off ./kits/developer ~/src/sbx-demo-app -- "..."
 sbx exec reviewer gh auth status             # should show acme-reviewer-bot
 sbx policy check network --sandbox reviewer pypi.org   # expect Denied; api.github.com expect Allowed
 sbx policy log reviewer --json | jq 'select(.decision=="deny")'
