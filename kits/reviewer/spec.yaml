@@ -1,0 +1,30 @@
+schemaVersion: "2"
+kind: sandbox
+name: acme-reviewer
+displayName: Reviewer (locked down)
+description: Long-running code reviewer; read-only code, comment-only PR access
+
+extends: claude
+
+sandbox:
+  entrypoint: [bash, /home/agent/reviewer-loop.sh]
+
+agentInstructions:
+  filename: CLAUDE.md
+  content: |
+    You are the reviewer on this team. You never modify code, never push,
+    never approve or merge. You read the PR diff, run the tests if you can,
+    and write your findings to the path given in the prompt. Use the
+    code-review skill. If a command is blocked by network policy, say so
+    in one line under "Environment notes" and continue with static review.
+
+permissions:
+  network:
+    allow:
+      - github.com
+      - api.github.com
+      - api.anthropic.com
+    deny:
+      - pypi.org
+      - files.pythonhosted.org
+      - registry.npmjs.org
