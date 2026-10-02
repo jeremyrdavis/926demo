@@ -13,7 +13,8 @@ agentInstructions:
     Branch from main as feat/<spec-id>. Commit with a conventional message.
     Push and open a PR with `gh pr create` whose body links the spec.
     Be fast and minimal. Do not add tests; the reviewer owns test coverage.
-    Stop after the PR URL is printed.
+    Announce the spec you start and the PR URL in Slack with `bash ~/bin/slack-post.sh`;
+    never post anything else there. Stop after the PR URL is printed.
 
 permissions:
   network:
@@ -21,5 +22,6 @@ permissions:
       - github.com
       - api.github.com
       - api.anthropic.com
+      - slack.com
       - pypi.org
       - files.pythonhosted.org

@@ -25,14 +25,16 @@ The audience should see Docker machinery (kit files, policy checks, the DENY log
 - `kits/developer/` and `kits/reviewer/`: the API-key **fallback**, v2 `kind: sandbox` with `extends: claude`. Same `files/home/` trees and the same instructions and network rules as the mixins. `sbx kit validate` rejects `sandbox.entrypoint` and ignores `agentInstructions.filename` on a mixin, so only the fallback kits carry those two fields. Keep the pairs in sync when editing either.
 - All four kits place `files/home/...` at `/home/agent/`.
   - Reviewer files: `reviewer-loop.sh`, `review-prompt.md`, and `.claude/skills/code-review/SKILL.md`.
-  - Developer files: `.claude/skills/implementer/SKILL.md`.
+  - Developer files: `.claude/skills/implementer/SKILL.md` (v1.1.0 posts start and PR link to Slack).
+  - All four: `bin/slack-post.sh` and `bin/slack-read.sh` (identical copies; `curl` + `python3` only). Kit `files/` lose their executable bit in the sandbox, so always invoke them as `bash ~/bin/<script>`. They no-op with a warning when `SLACK_BOT_TOKEN`/`SLACK_CHANNEL_ID` are unset, so a sandbox without Slack still works.
+- `Iteration_2_-_Requirements.md` and `Iteration_2_-_Spike_1_-_Slack.md`: the iteration 2 requirements and the Slack spike spec (scope, decisions, checklist, demo beats). Slack is **not** an `sbx` service, so its token is a plain env var in the sandbox (`--env-file`/`-e`), unlike the GitHub sentinel; say so on stage.
 - `sbx-demo-app/`: the contents of the **separate** GitHub repo `<owner>/sbx-demo-app` (small Python service plus pytest, with `specs/001-discount-codes.md`). It is staged here only for authoring. It must be published as its own repo and cloned to `~/src/sbx-demo-app`, which is what gets bind-mounted into the developer sandbox. It has its own `CLAUDE.md` meant for that repo.
 - `RUNBOOK-NOTES.md`: the section 6 checklist split into verified and to-run-on-the-Mac, plus deviations from the spec.
 
 ## Architecture points that span files
 
 - The reviewer runs `reviewer-loop.sh` inside its sandbox. With the mixin kit it is started by `sbx exec reviewer bash /home/agent/reviewer-loop.sh` after `sbx create`; with the fallback kit it is the `sandbox.entrypoint`. Either way it clones each PR to `/home/agent/workspace/pr-N`, runs `claude -p` against `review-prompt.md` (with `{{PR}}`/`{{OUT}}` substituted), then **the script, not the agent**, appends the traceability footer and posts via `gh pr comment --body-file`.
-  - State is kept in `/home/agent/state/handled.txt`, and a PR is recorded only after its comment succeeds.
+  - State is kept in `/home/agent/state/handled.txt`, and a PR is recorded only after its comment succeeds. `state/slack-cursor` holds the last Slack `ts` read; the loop polls `#agentic-team` each cycle and honours `reviewer: re-review N` (drops N from `handled.txt`) and `reviewer: status`. Messages with `bot_id` are ignored so agents never answer agents. Slack failures are logged, never fatal.
   - Use `set -u`, not `set -e`, so one failed review doesn't kill the loop.
   - The footer text is specified in spec section 4.5. `BOT_LOGIN` defaults to the login `gh api user` reports. The spec's last line ("cannot push, approve, or merge") prints only when `REVIEWER_LOCKED_DOWN=1`; otherwise a softened line names whose permissions the agent runs with. Never set the flag unless the token genuinely cannot push.
 - Lockdown is layered:

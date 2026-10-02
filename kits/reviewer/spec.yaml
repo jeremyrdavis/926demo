@@ -24,6 +24,7 @@ permissions:
       - github.com
       - api.github.com
       - api.anthropic.com
+      - slack.com
     deny:
       - pypi.org
       - files.pythonhosted.org
