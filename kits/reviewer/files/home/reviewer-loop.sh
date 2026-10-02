@@ -12,7 +12,9 @@ REVIEWER_HOME="${REVIEWER_HOME:-/home/agent}"
 
 SKILL_NAME="code-review"
 SKILL_VERSION="1.0.0"
-BOT_LOGIN="${BOT_LOGIN:-acme-reviewer-bot}"
+# Set REVIEWER_LOCKED_DOWN=1 only when the GitHub token really cannot push
+# (bot PAT or a proxy deny on git-receive-pack); the footer must stay honest.
+REVIEWER_LOCKED_DOWN="${REVIEWER_LOCKED_DOWN:-0}"
 SANDBOX_LABEL="${SANDBOX_NAME:-reviewer}"
 MODEL_LABEL="${ANTHROPIC_MODEL:-Claude Code default}"
 SBX_VERSION="${SBX_VERSION:-unknown}"
@@ -44,7 +46,11 @@ footer() {
   printf '_Reviewed by `%s` · sandbox `%s` · skill `%s` v%s · model %s · triggered by PR #%s opened by @%s · %s · Docker Sandboxes %s_\n' \
     "$BOT_LOGIN" "$SANDBOX_LABEL" "$SKILL_NAME" "$SKILL_VERSION" "$MODEL_LABEL" \
     "$n" "$author" "$(date -u +'%Y-%m-%d %H:%M:%SZ')" "$SBX_VERSION"
-  printf '_This agent can read code and comment. It cannot push, approve, or merge._\n'
+  if [ "$REVIEWER_LOCKED_DOWN" = "1" ]; then
+    printf '_This agent can read code and comment. It cannot push, approve, or merge._\n'
+  else
+    printf '_This agent is configured to comment only. It currently runs with @%s'"'"'s GitHub permissions._\n' "$BOT_LOGIN"
+  fi
 }
 
 review_pr() {
@@ -116,7 +122,8 @@ poll_once() {
 }
 
 identity="$(gh api user --jq .login 2>/dev/null || echo unknown)"
-log "authenticated to GitHub as $identity"
+BOT_LOGIN="${BOT_LOGIN:-$identity}"
+log "authenticated to GitHub as $identity (footer identity: $BOT_LOGIN, locked down: $REVIEWER_LOCKED_DOWN)"
 log "polling $REPO every ${POLL_SECONDS}s"
 
 while true; do
