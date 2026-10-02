@@ -20,7 +20,7 @@ Every `sbx` line matches spec section 9. If any output differs from the spec, st
 - [x] `sbx version` (need ≥ 0.42). Record above.
 - [x] `sbx login`, then `sbx ls` succeeds.
 - [x] `sbx policy ls`. If it does **not** say `Governance: Managed by <org>`: `sbx policy init deny-all`, then `sbx policy check network pypi.org` → Denied. If governed: skip `init` (kit allow rules are inactive; kit deny rules still apply).
-- [ ] ~~`echo "$ANTHROPIC_API_KEY" | sbx secret set anthropic`~~ **Superseded (2026-10-01):** staying on Claude Code OAuth instead of an API key. Proxy-managed OAuth is unsupported for kits that `extends: claude`, so the primary kits are now the `kind: mixin` variants in `kits/developer-mixin` and `kits/reviewer-mixin`, layered onto the built-in `claude` agent with `--kit`. No `anthropic` secret is needed. The `extends: claude` kits stay as the API-key fallback.
+- [x] ~~`echo "$ANTHROPIC_API_KEY" | sbx secret set anthropic`~~ **Superseded (2026-10-01):** staying on Claude Code OAuth instead of an API key. Proxy-managed OAuth is unsupported for kits that `extends: claude`, so the primary kits are now the `kind: mixin` variants in `kits/developer-mixin` and `kits/reviewer-mixin`, layered onto the built-in `claude` agent with `--kit`. No `anthropic` secret is needed. The `extends: claude` kits stay as the API-key fallback.
   - [x] Verified 2026-10-01: the reviewer sandbox created from the mixin runs Claude Code on OAuth; `sbx secret ls` shows `(global) service anthropic (oauth configured)` and no API key was set. If this ever stops working, fall back to the original kits and the `sbx secret set anthropic` line above.
 - [x] `ls ~/Library/Logs/com.docker.sandboxes/sandboxes/auditkit/`. Record whether `.jsonl` files exist.
 
@@ -32,15 +32,15 @@ Every `sbx` line matches spec section 9. If any output differs from the spec, st
 
 ### Kits and credentials
 
-- [x] `sbx kit validate ./kits/developer-mixin` → VALID (2026-10-01). It warned that `agentInstructions.filename` is ignored for mixins (content is still merged), so `filename` was removed from both mixins.
-- [ ] `sbx kit validate ./kits/reviewer-mixin` → re-run after the fix. The first run failed: `'sandbox:' block is only valid for kind "sandbox", not "mixin"`, so the entrypoint was removed and the loop is now started with `sbx exec` (see Reviewer sandbox below).
+- [x] `sbx kit validate ./kits/developer-mixin` → VALID (2026-10-01). The developer sandbox has since been created from it and produced a PR. It warned that `agentInstructions.filename` is ignored for mixins (content is still merged), so `filename` was removed from both mixins.
+- [x] `sbx kit validate ./kits/reviewer-mixin` → VALID after the fix (the reviewer sandbox has been created from it since). The first run failed: `'sandbox:' block is only valid for kind "sandbox", not "mixin"`, so the entrypoint was removed and the loop is now started with `sbx exec` (see Reviewer sandbox below).
 - [ ] `sbx kit validate ./kits/developer` and `./kits/reviewer` if keeping the API-key fallback warm.
-- [ ] Create credential bindings: run each kit interactively once, or write `~/.config/sbx/credentials.yaml` (format in spec section 9). `cat` it and confirm `anthropic` and `github` bindings.
+- Credential bindings in `~/.config/sbx/credentials.yaml` were **not needed** for the mixin path (the built-in `claude` agent carries its own). Only relevant if the `extends: claude` fallback kits are used.
 - [x] `sbx secret set github --sandbox reviewer -t "$(gh auth token --user jeremyrdavis)"` (verified 2026-10-02: `sbx exec reviewer gh auth status` → `jeremyrdavis`; loop startup line shows the same). The host `gh` is logged in as both `jeremydavisdocker` and `jeremyrdavis`; `--user` picks the right one.
   - Demo material: `sbx exec reviewer printenv GH_TOKEN` prints the sentinel `gho_sbxproxymanaged000000000000000000000` while `gh` inside the sandbox works. The real token never enters the sandbox; the proxy injects it per request.
   - With the global `github` row removed, it did **not** reappear after the sandbox was restarted, so sbx does not re-create it; the earlier reappearance was an incomplete removal. The "no global `github` secret" rule stands.
   - **Do not use the `--command 'gh auth token …'` form (observed 2026-10-02).** With it, `gh auth status` inside the sandbox reported "The token in GH_TOKEN is invalid". The daemon runs the command outside a user session and apparently cannot read `gh`'s Keychain-stored token, so an empty or bad value gets injected. The literal `-t "$(…)"` form, evaluated in your own shell, is the one that works; `gho_` tokens do not expire, so the snapshot is fine.
-- [ ] `sbx secret set github --sandbox developer -t "$(gh auth token --user jeremyrdavis)"`. If `--sandbox` is rejected before the sandbox exists, `sbx create` it first (see Developer sandbox). Then `sbx secret ls` shows two sandbox-scoped `github` entries and **no** `(global) github` row.
+- [x] `sbx secret set github --sandbox developer -t "$(gh auth token --user jeremyrdavis)"` (done 2026-10-02). If `--sandbox` is rejected before the sandbox exists, `sbx create` it first (see Developer sandbox). Then `sbx secret ls` shows two sandbox-scoped `github` entries and **no** `(global) github` row.
   - **Observed 2026-10-01:** a pre-existing `(global) service github` entry from earlier, unrelated sandboxes made the reviewer authenticate as `jeremydavisdocker`. The global entry was removed with `sbx secret rm github`. Any other sandbox that relied on it needs its own scoped secret now. With no global entry, a sandbox with no scoped `github` secret has no GitHub token at all, which is the intended failure mode.
 
 ### Reviewer sandbox
@@ -61,8 +61,8 @@ Every `sbx` line matches spec section 9. If any output differs from the spec, st
 
 ### Developer sandbox
 
-- [ ] Clone the repo to `~/src/sbx-demo-app` on `main` (done above if you used the `cp` route).
-- [ ] Create first so the scoped secret exists before Claude Code's first `gh` call (there is no global `github` secret to fall back on any more):
+- [x] Clone the repo to `~/src/sbx-demo-app` on `main` (done above if you used the `cp` route).
+- [x] (First clean run 2026-10-02; PR URL and timings not recorded.) Create first so the scoped secret exists before Claude Code's first `gh` call (there is no global `github` secret to fall back on any more):
   ```bash
   sbx create --name developer --skills=off --kit ./kits/developer-mixin claude ~/src/sbx-demo-app
   sbx secret set github --sandbox developer -t "$(gh auth token --user jeremyrdavis)"
@@ -73,9 +73,11 @@ Every `sbx` line matches spec section 9. If any output differs from the spec, st
 
 ### End to end
 
-- [ ] Within 30–60 s of the PR opening, the reviewer log shows pickup, checkout, `claude -p`, the "review says: … Environment notes …" line, and the comment URL.
-- [ ] On GitHub: comment by `jeremyrdavis` (same account as the PR author; GitHub allows commenting, not approving, your own PR), with the 4.5 footer whose last line reads "configured to comment only … runs with @jeremyrdavis's GitHub permissions", and an Environment notes line about the blocked install.
-- [ ] `sbx policy log reviewer --json | jq 'select(.decision=="deny")'` shows the pypi DENY inside the review window.
+**First end-to-end run succeeded 2026-10-02 (tag `step-01`).** Jeremy reported the three items below working; PR number, timings and the exact comment text were not captured. Capture them on the second clean run.
+
+- [x] Within 30–60 s of the PR opening, the reviewer log shows pickup, checkout, `claude -p`, the "review says: … Environment notes …" line, and the comment URL.
+- [x] On GitHub: comment by `jeremyrdavis` (same account as the PR author; GitHub allows commenting, not approving, your own PR), with the 4.5 footer whose last line reads "configured to comment only … runs with @jeremyrdavis's GitHub permissions", and an Environment notes line about the blocked install.
+- [x] `sbx policy log reviewer --json | jq 'select(.decision=="deny")'` shows the pypi DENY inside the review window.
 - [ ] If audit `.jsonl` exists: `grep -l '"resource_id": "pypi.org' ~/Library/Logs/com.docker.sandboxes/sandboxes/auditkit/*.jsonl` finds a record with `username` = Jeremy and `agent` = claude.
 - [ ] Reset: close the PR, delete the branch, `sbx rm --force developer`, clear the PR number from the reviewer's `/home/agent/state/handled.txt` (or `sbx rm --force reviewer` and relaunch). Run again clean. Section 7 must run clean twice.
 - [ ] Record a full clean run (both terminals and the browser) as the fallback. Then run the section 7 runbook.
